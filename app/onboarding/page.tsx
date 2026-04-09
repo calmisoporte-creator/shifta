@@ -45,7 +45,7 @@ export default function OnboardingPage() {
       return
     }
 
-    router.push('/admin/dashboard')
+    router.push('/dashboard')
     router.refresh()
   }
 

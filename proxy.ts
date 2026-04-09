@@ -39,7 +39,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
-  if (user && (pathname.startsWith('/admin') || pathname.startsWith('/dashboard') || pathname.startsWith('/areas') || pathname.startsWith('/employees') || pathname.startsWith('/history') || pathname.startsWith('/settings'))) {
+  if (user && (pathname.startsWith('/dashboard') || pathname.startsWith('/areas') || pathname.startsWith('/employees') || pathname.startsWith('/history') || pathname.startsWith('/settings'))) {
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
@@ -59,7 +59,7 @@ export async function proxy(request: NextRequest) {
       .single()
 
     if (profile?.role === 'admin') {
-      return NextResponse.redirect(new URL('/admin/dashboard', request.url))
+      return NextResponse.redirect(new URL('/dashboard', request.url))
     }
   }
 

@@ -20,7 +20,7 @@ export default async function RootPage() {
   }
 
   if (profile.role === 'admin') {
-    redirect('/admin/dashboard')
+    redirect('/dashboard')
   }
 
   redirect('/tasks')

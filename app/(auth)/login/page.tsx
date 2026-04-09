@@ -41,7 +41,7 @@ export default function LoginPage() {
       if (!profile?.company_id) {
         router.push('/onboarding')
       } else if (profile.role === 'admin') {
-        router.push('/admin/dashboard')
+        router.push('/dashboard')
       } else {
         router.push('/tasks')
       }

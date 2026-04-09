@@ -16,7 +16,7 @@ export default async function EmployeeLayout({ children }: { children: React.Rea
     .single()
 
   if (!profile) redirect('/login')
-  if (profile.role === 'admin') redirect('/admin/dashboard')
+  if (profile.role === 'admin') redirect('/dashboard')
   if (!profile.company_id) redirect('/onboarding')
 
   const { data: company } = await supabase

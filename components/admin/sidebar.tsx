@@ -14,11 +14,11 @@ import {
 } from 'lucide-react'
 
 const navItems = [
-  { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/areas', label: 'Áreas', icon: Layers },
-  { href: '/admin/employees', label: 'Empleados', icon: Users },
-  { href: '/admin/history', label: 'Historial', icon: History },
-  { href: '/admin/settings', label: 'Configuración', icon: Settings },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/areas', label: 'Áreas', icon: Layers },
+  { href: '/employees', label: 'Empleados', icon: Users },
+  { href: '/history', label: 'Historial', icon: History },
+  { href: '/settings', label: 'Configuración', icon: Settings },
 ]
 
 interface SidebarProps {
