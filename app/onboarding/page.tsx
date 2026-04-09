@@ -29,7 +29,7 @@ export default function OnboardingPage() {
       .single()
 
     if (companyError || !company) {
-      setError('No se pudo crear la empresa')
+      setError(companyError?.message ?? 'No se pudo crear la empresa')
       setLoading(false)
       return
     }
