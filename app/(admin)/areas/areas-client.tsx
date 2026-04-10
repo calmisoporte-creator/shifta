@@ -1,15 +1,13 @@
 'use client'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { WorkArea, Shift, Task } from '@/lib/types'
 import { Plus, Edit2, Trash2, Clock, ListTodo, Users, Lock } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { ShiftsManager } from './shifts-manager'
 import { TasksManager } from './tasks-manager'
 
@@ -20,20 +18,21 @@ interface Props {
 }
 
 export function AreasClient({ initialAreas, tasks, companyId }: Props) {
-  const router = useRouter()
-  const supabase = createClient()
+  const supabaseRef = useRef(createClient())
+  const supabase = supabaseRef.current
+
   const [areas, setAreas] = useState(initialAreas)
   const [allTasks, setAllTasks] = useState(tasks)
-  const [selectedArea, setSelectedArea] = useState<WorkArea & { shifts: Shift[] } | null>(null)
-  const [tab, setTab] = useState<'shifts' | 'tasks'>('tasks')
 
-  // Modal crear/editar área
+  // Solo guardamos el ID — el área se deriva de `areas`
+  const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null)
+  const selectedArea = areas.find(a => a.id === selectedAreaId) ?? null
+
+  const [tab, setTab] = useState<'shifts' | 'tasks'>('tasks')
   const [areaModal, setAreaModal] = useState(false)
   const [editingArea, setEditingArea] = useState<WorkArea | null>(null)
   const [form, setForm] = useState({ name: '', access_type: 'employees' as 'employees' | 'admins_only' })
   const [saving, setSaving] = useState(false)
-
-  // Modal eliminar
   const [deleteModal, setDeleteModal] = useState(false)
   const [deletingArea, setDeletingArea] = useState<WorkArea | null>(null)
 
@@ -54,42 +53,41 @@ export function AreasClient({ initialAreas, tasks, companyId }: Props) {
     setSaving(true)
 
     if (editingArea) {
-      const { data } = await supabase
-        .from('work_areas')
-        .update({ name: form.name.trim(), access_type: form.access_type })
-        .eq('id', editingArea.id)
-        .select('*, shifts(*)')
-        .single()
-      if (data) setAreas(prev => prev.map(a => a.id === data.id ? data as any : a))
+      // Optimistic
+      setAreas(prev => prev.map(a => a.id === editingArea.id ? { ...a, name: form.name.trim(), access_type: form.access_type } : a))
+      setAreaModal(false)
+      setSaving(false)
+      await supabase.from('work_areas').update({ name: form.name.trim(), access_type: form.access_type }).eq('id', editingArea.id)
     } else {
+      const tempId = crypto.randomUUID()
+      const optimistic = { id: tempId, name: form.name.trim(), access_type: form.access_type, company_id: companyId, order_index: areas.length, created_at: new Date().toISOString(), shifts: [] }
+      setAreas(prev => [...prev, optimistic as any])
+      setAreaModal(false)
+      setSaving(false)
+
       const { data } = await supabase
         .from('work_areas')
-        .insert({
-          name: form.name.trim(),
-          access_type: form.access_type,
-          company_id: companyId,
-          order_index: areas.length,
-        })
+        .insert({ name: form.name.trim(), access_type: form.access_type, company_id: companyId, order_index: areas.length })
         .select('*, shifts(*)')
         .single()
-      if (data) setAreas(prev => [...prev, data as any])
-    }
 
-    setSaving(false)
-    setAreaModal(false)
-    router.refresh()
+      if (data) {
+        setAreas(prev => prev.map(a => a.id === tempId ? data as any : a))
+        setSelectedAreaId((data as any).id)
+      }
+    }
   }
 
   async function deleteArea() {
     if (!deletingArea) return
     setSaving(true)
-    await supabase.from('work_areas').delete().eq('id', deletingArea.id)
     setAreas(prev => prev.filter(a => a.id !== deletingArea.id))
     setAllTasks(prev => prev.filter(t => t.area_id !== deletingArea.id))
-    if (selectedArea?.id === deletingArea.id) setSelectedArea(null)
+    if (selectedAreaId === deletingArea.id) setSelectedAreaId(null)
     setSaving(false)
     setDeleteModal(false)
     setDeletingArea(null)
+    await supabase.from('work_areas').delete().eq('id', deletingArea.id)
   }
 
   return (
@@ -110,9 +108,9 @@ export function AreasClient({ initialAreas, tasks, companyId }: Props) {
           {areas.map(area => (
             <button
               key={area.id}
-              onClick={() => { setSelectedArea(area); setTab('tasks') }}
+              onClick={() => { setSelectedAreaId(area.id); setTab('tasks') }}
               className={`w-full flex items-start justify-between rounded-lg px-3 py-3 text-left transition-colors ${
-                selectedArea?.id === area.id
+                selectedAreaId === area.id
                   ? 'bg-violet-600/15 border border-violet-500/30'
                   : 'hover:bg-gray-800 border border-transparent'
               }`}
@@ -121,27 +119,17 @@ export function AreasClient({ initialAreas, tasks, companyId }: Props) {
                 <p className="text-sm font-medium text-gray-100 truncate">{area.name}</p>
                 <div className="flex items-center gap-2 mt-1">
                   {area.access_type === 'admins_only' ? (
-                    <Badge variant="warning">
-                      <Lock size={10} /> Solo admins
-                    </Badge>
+                    <Badge variant="warning"><Lock size={10} /> Solo admins</Badge>
                   ) : (
-                    <Badge variant="info">
-                      <Users size={10} /> Empleados
-                    </Badge>
+                    <Badge variant="info"><Users size={10} /> Empleados</Badge>
                   )}
                 </div>
               </div>
               <div className="flex gap-1 ml-2 flex-shrink-0">
-                <button
-                  onClick={e => { e.stopPropagation(); openEdit(area) }}
-                  className="p-1.5 rounded text-gray-500 hover:text-gray-100 hover:bg-gray-700"
-                >
+                <button onClick={e => { e.stopPropagation(); openEdit(area) }} className="p-1.5 rounded text-gray-500 hover:text-gray-100 hover:bg-gray-700">
                   <Edit2 size={12} />
                 </button>
-                <button
-                  onClick={e => { e.stopPropagation(); setDeletingArea(area); setDeleteModal(true) }}
-                  className="p-1.5 rounded text-gray-500 hover:text-red-400 hover:bg-red-500/10"
-                >
+                <button onClick={e => { e.stopPropagation(); setDeletingArea(area); setDeleteModal(true) }} className="p-1.5 rounded text-gray-500 hover:text-red-400 hover:bg-red-500/10">
                   <Trash2 size={12} />
                 </button>
               </div>
@@ -158,34 +146,19 @@ export function AreasClient({ initialAreas, tasks, companyId }: Props) {
           </div>
         ) : (
           <div className="p-6">
-            <div className="mb-6 flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-bold text-gray-100">{selectedArea.name}</h2>
-                <p className="text-sm text-gray-400 mt-0.5">
-                  {selectedArea.access_type === 'admins_only' ? 'Solo administradores' : 'Área visible para empleados'}
-                </p>
-              </div>
+            <div className="mb-6">
+              <h2 className="text-xl font-bold text-gray-100">{selectedArea.name}</h2>
+              <p className="text-sm text-gray-400 mt-0.5">
+                {selectedArea.access_type === 'admins_only' ? 'Solo administradores' : 'Área visible para empleados'}
+              </p>
             </div>
 
-            {/* Tabs */}
             <div className="flex gap-1 rounded-lg bg-gray-800 p-1 w-fit mb-6">
-              <button
-                onClick={() => setTab('tasks')}
-                className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-                  tab === 'tasks' ? 'bg-gray-700 text-gray-100' : 'text-gray-400 hover:text-gray-100'
-                }`}
-              >
-                <ListTodo size={14} />
-                Tareas
+              <button onClick={() => setTab('tasks')} className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${tab === 'tasks' ? 'bg-gray-700 text-gray-100' : 'text-gray-400 hover:text-gray-100'}`}>
+                <ListTodo size={14} /> Tareas
               </button>
-              <button
-                onClick={() => setTab('shifts')}
-                className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-                  tab === 'shifts' ? 'bg-gray-700 text-gray-100' : 'text-gray-400 hover:text-gray-100'
-                }`}
-              >
-                <Clock size={14} />
-                Turnos
+              <button onClick={() => setTab('shifts')} className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${tab === 'shifts' ? 'bg-gray-700 text-gray-100' : 'text-gray-400 hover:text-gray-100'}`}>
+                <Clock size={14} /> Turnos
               </button>
             </div>
 
@@ -204,9 +177,9 @@ export function AreasClient({ initialAreas, tasks, companyId }: Props) {
               <ShiftsManager
                 area={selectedArea}
                 shifts={selectedArea.shifts ?? []}
-                onShiftsChange={updated => setAreas(prev =>
-                  prev.map(a => a.id === selectedArea.id ? { ...a, shifts: updated } : a)
-                )}
+                onShiftsChange={updated =>
+                  setAreas(prev => prev.map(a => a.id === selectedArea.id ? { ...a, shifts: updated } : a))
+                }
               />
             )}
           </div>
@@ -214,54 +187,28 @@ export function AreasClient({ initialAreas, tasks, companyId }: Props) {
       </div>
 
       {/* Modal crear/editar área */}
-      <Modal
-        open={areaModal}
-        onClose={() => setAreaModal(false)}
-        title={editingArea ? 'Editar área' : 'Nueva área de trabajo'}
-      >
+      <Modal open={areaModal} onClose={() => setAreaModal(false)} title={editingArea ? 'Editar área' : 'Nueva área de trabajo'}>
         <div className="space-y-4">
-          <Input
-            label="Nombre del área"
-            placeholder="Ej: Atención al cliente"
-            value={form.name}
-            onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-          />
-          <Select
-            label="Tipo de acceso"
-            value={form.access_type}
-            onChange={e => setForm(p => ({ ...p, access_type: e.target.value as any }))}
-          >
+          <Input label="Nombre del área" placeholder="Ej: Atención al cliente" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
+          <Select label="Tipo de acceso" value={form.access_type} onChange={e => setForm(p => ({ ...p, access_type: e.target.value as any }))}>
             <option value="employees">Con empleados — visible para todos</option>
             <option value="admins_only">Solo admins — invisible para empleados</option>
           </Select>
           <div className="flex gap-3 pt-2">
-            <Button variant="secondary" className="flex-1" onClick={() => setAreaModal(false)}>
-              Cancelar
-            </Button>
-            <Button className="flex-1" loading={saving} onClick={saveArea}>
-              {editingArea ? 'Guardar cambios' : 'Crear área'}
-            </Button>
+            <Button variant="secondary" className="flex-1" onClick={() => setAreaModal(false)}>Cancelar</Button>
+            <Button className="flex-1" loading={saving} onClick={saveArea}>{editingArea ? 'Guardar cambios' : 'Crear área'}</Button>
           </div>
         </div>
       </Modal>
 
-      {/* Modal confirmar eliminación */}
-      <Modal
-        open={deleteModal}
-        onClose={() => setDeleteModal(false)}
-        title="Eliminar área"
-      >
+      {/* Modal eliminar área */}
+      <Modal open={deleteModal} onClose={() => setDeleteModal(false)} title="Eliminar área">
         <p className="text-sm text-gray-300 mb-5">
-          ¿Estás seguro de eliminar el área <strong>{deletingArea?.name}</strong>?
-          Se eliminarán todas sus tareas y turnos.
+          ¿Eliminar el área <strong>{deletingArea?.name}</strong>? Se eliminarán todas sus tareas y turnos.
         </p>
         <div className="flex gap-3">
-          <Button variant="secondary" className="flex-1" onClick={() => setDeleteModal(false)}>
-            Cancelar
-          </Button>
-          <Button variant="danger" className="flex-1" loading={saving} onClick={deleteArea}>
-            Eliminar
-          </Button>
+          <Button variant="secondary" className="flex-1" onClick={() => setDeleteModal(false)}>Cancelar</Button>
+          <Button variant="danger" className="flex-1" loading={saving} onClick={deleteArea}>Eliminar</Button>
         </div>
       </Modal>
     </div>
