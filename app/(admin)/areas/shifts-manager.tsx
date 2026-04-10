@@ -46,39 +46,71 @@ export function ShiftsManager({ area, shifts, onShiftsChange }: Props) {
     setError('')
 
     if (editing) {
-      const { data, error: err } = await supabase
+      // Actualización optimista inmediata
+      const updated = { ...editing, name: form.name.trim(), start_time: form.start_time }
+      onShiftsChange(shifts.map(s => s.id === editing.id ? updated : s))
+      setModal(false)
+      setSaving(false)
+
+      const { error: err } = await supabase
         .from('shifts')
         .update({ name: form.name.trim(), start_time: form.start_time })
         .eq('id', editing.id)
-        .select()
-        .single()
 
-      if (err) { setError(err.message); setSaving(false); return }
-      if (data) onShiftsChange(shifts.map(s => s.id === (data as any).id ? data as any : s))
+      if (err) {
+        // Revertir si falla
+        onShiftsChange(shifts)
+        setError(err.message)
+        setModal(true)
+      }
     } else {
+      // Optimistic insert con ID temporal
+      const tempId = crypto.randomUUID()
+      const optimistic = {
+        id: tempId,
+        name: form.name.trim(),
+        start_time: form.start_time,
+        area_id: area.id,
+        created_at: new Date().toISOString(),
+      }
+      onShiftsChange([...shifts, optimistic as any])
+      setModal(false)
+      setSaving(false)
+
       const { data, error: err } = await supabase
         .from('shifts')
         .insert({ name: form.name.trim(), start_time: form.start_time, area_id: area.id })
-        .select()
+        .select('id')
         .single()
 
-      if (err) { setError(err.message); setSaving(false); return }
-      if (data) onShiftsChange([...shifts, data as any])
+      if (err) {
+        // Revertir si falla
+        onShiftsChange(shifts)
+        setError(err.message)
+        setModal(true)
+      } else if (data) {
+        // Reemplazar ID temporal con el real
+        onShiftsChange([...shifts, { ...optimistic, id: (data as any).id } as any])
+      }
     }
-
-    setSaving(false)
-    setModal(false)
   }
 
   async function deleteShift() {
     if (!deleting) return
     setSaving(true)
-    const { error: err } = await supabase.from('shifts').delete().eq('id', deleting.id)
-    if (err) { setError(err.message); setSaving(false); return }
+
+    // Optimistic delete
+    const prev = shifts
     onShiftsChange(shifts.filter(s => s.id !== deleting.id))
-    setSaving(false)
     setDeleteModal(false)
     setDeleting(null)
+    setSaving(false)
+
+    const { error: err } = await supabase.from('shifts').delete().eq('id', deleting.id)
+    if (err) {
+      onShiftsChange(prev)
+      setError(err.message)
+    }
   }
 
   const sortedShifts = [...shifts].sort((a, b) => a.start_time.localeCompare(b.start_time))

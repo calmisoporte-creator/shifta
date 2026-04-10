@@ -64,34 +64,45 @@ export function TasksManager({ area, tasks, onTasksChange }: Props) {
     }
 
     if (editing) {
-      const { data } = await supabase
-        .from('tasks')
-        .update(payload)
-        .eq('id', editing.id)
-        .select()
-        .single()
-      if (data) onTasksChange(tasks.map(t => t.id === data.id ? data : t))
+      const updated = { ...editing, ...payload }
+      onTasksChange(tasks.map(t => t.id === editing.id ? updated : t))
+      setModal(false)
+      setSaving(false)
+      await supabase.from('tasks').update(payload).eq('id', editing.id)
     } else {
+      const tempId = crypto.randomUUID()
+      const optimistic = {
+        id: tempId,
+        ...payload,
+        area_id: area.id,
+        order_index: tasks.length,
+        created_at: new Date().toISOString(),
+      }
+      onTasksChange([...tasks, optimistic as any])
+      setModal(false)
+      setSaving(false)
+
       const { data } = await supabase
         .from('tasks')
         .insert({ ...payload, area_id: area.id, order_index: tasks.length })
-        .select()
+        .select('id')
         .single()
-      if (data) onTasksChange([...tasks, data])
-    }
 
-    setSaving(false)
-    setModal(false)
+      if (data) {
+        onTasksChange([...tasks, { ...optimistic, id: (data as any).id } as any])
+      }
+    }
   }
 
   async function deleteTask() {
     if (!deleting) return
     setSaving(true)
-    await supabase.from('tasks').delete().eq('id', deleting.id)
+    const prev = tasks
     onTasksChange(tasks.filter(t => t.id !== deleting.id))
-    setSaving(false)
     setDeleteModal(false)
     setDeleting(null)
+    setSaving(false)
+    await supabase.from('tasks').delete().eq('id', deleting.id)
   }
 
   // Drag & drop reordering
