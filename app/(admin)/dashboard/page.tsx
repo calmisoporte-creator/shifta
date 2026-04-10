@@ -20,6 +20,14 @@ export default async function DashboardPage() {
   const companyId = profile.company_id
   const today = new Date().toISOString().split('T')[0]
 
+  // Primero obtenemos los IDs de áreas para usarlos en la query de tareas
+  const { data: areas } = await supabase
+    .from('work_areas')
+    .select('id')
+    .eq('company_id', companyId)
+
+  const areaIds = (areas ?? []).map((a: any) => a.id)
+
   const [
     { count: areasCount },
     { count: employeesCount },
@@ -28,9 +36,9 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     supabase.from('work_areas').select('*', { count: 'exact', head: true }).eq('company_id', companyId),
     supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('company_id', companyId).eq('role', 'employee').eq('is_active', true),
-    supabase.from('tasks')
-      .select('*', { count: 'exact', head: true })
-      .in('area_id', supabase.from('work_areas').select('id').eq('company_id', companyId) as any),
+    areaIds.length > 0
+      ? supabase.from('tasks').select('*', { count: 'exact', head: true }).in('area_id', areaIds)
+      : Promise.resolve({ count: 0 }),
     supabase
       .from('task_completions')
       .select(`
