@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,7 +7,7 @@ import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { Badge } from '@/components/ui/badge'
 import type { WorkArea, Task } from '@/lib/types'
-import { Plus, Edit2, Trash2, GripVertical, Flag } from 'lucide-react'
+import { Plus, Edit2, Trash2, GripVertical, Flag, CheckCircle2, Clock, Circle } from 'lucide-react'
 import { priorityLabel, priorityColor } from '@/lib/utils'
 
 interface Props {
@@ -16,8 +16,42 @@ interface Props {
   onTasksChange: (tasks: Task[]) => void
 }
 
+// Estado de completado de una tarea hoy
+type CompletionStatus = 'completed' | 'in_progress' | 'pending' | null
+
+function CompletionBadge({ status }: { status: CompletionStatus }) {
+  if (status === 'completed') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-xs font-medium text-emerald-400">
+        <CheckCircle2 size={10} /> Completada hoy
+      </span>
+    )
+  }
+  if (status === 'in_progress') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-medium text-amber-400">
+        <Clock size={10} /> En progreso
+      </span>
+    )
+  }
+  if (status === 'pending') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-gray-500/15 border border-gray-500/30 px-2 py-0.5 text-xs font-medium text-gray-400">
+        <Circle size={10} /> Pendiente
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-gray-800 border border-gray-700 px-2 py-0.5 text-xs font-medium text-gray-500">
+      <Circle size={10} /> Sin actividad hoy
+    </span>
+  )
+}
+
 export function TasksManager({ area, tasks, onTasksChange }: Props) {
-  const supabase = createClient()
+  const supabaseRef = useRef(createClient())
+  const supabase = supabaseRef.current
+
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState<Task | null>(null)
   const [form, setForm] = useState({
@@ -32,6 +66,55 @@ export function TasksManager({ area, tasks, onTasksChange }: Props) {
   const [deleting, setDeleting] = useState<Task | null>(null)
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState<number | null>(null)
+
+  // Estado de completado por tarea: task_id -> status más avanzado del día
+  const [completions, setCompletions] = useState<Record<string, CompletionStatus>>({})
+
+  const today = new Date().toISOString().split('T')[0]
+
+  // Carga y suscripción en tiempo real a completions de hoy
+  useEffect(() => {
+    const taskIds = tasks.map(t => t.id)
+    if (taskIds.length === 0) {
+      setCompletions({})
+      return
+    }
+
+    async function fetchCompletions() {
+      const { data } = await supabase
+        .from('task_completions')
+        .select('task_id, status')
+        .in('task_id', taskIds)
+        .eq('date', today)
+
+      if (data) {
+        // Para cada tarea, tomamos el estado más avanzado del día
+        const priority: Record<string, number> = { completed: 3, in_progress: 2, pending: 1 }
+        const map: Record<string, CompletionStatus> = {}
+        data.forEach(c => {
+          const current = map[c.task_id]
+          if (!current || (priority[c.status] ?? 0) > (priority[current] ?? 0)) {
+            map[c.task_id] = c.status as CompletionStatus
+          }
+        })
+        setCompletions(map)
+      }
+    }
+
+    fetchCompletions()
+
+    // Suscripción realtime
+    const channel = supabase
+      .channel(`completions-area-${area.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'task_completions' },
+        () => { fetchCompletions() }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [area.id, tasks.length, today])
 
   function openCreate() {
     setEditing(null)
@@ -121,7 +204,6 @@ export function TasksManager({ area, tasks, onTasksChange }: Props) {
     setDragIdx(null)
     setDragOver(null)
 
-    // Persist
     await Promise.all(
       updated.map(t =>
         supabase.from('tasks').update({ order_index: t.order_index }).eq('id', t.id)
@@ -165,7 +247,10 @@ export function TasksManager({ area, tasks, onTasksChange }: Props) {
               {task.description && (
                 <p className="text-xs text-gray-400 truncate mt-0.5">{task.description}</p>
               )}
-              <div className="flex items-center gap-2 mt-1">
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                {/* Estado de completado hoy */}
+                <CompletionBadge status={completions[task.id] ?? null} />
+
                 <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${priorityColor[task.priority]}`}>
                   <Flag size={9} />
                   {priorityLabel[task.priority]}
