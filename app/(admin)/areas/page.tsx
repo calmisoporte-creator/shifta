@@ -5,9 +5,11 @@ export default async function AreasPage() {
   const [supabase, profile] = await Promise.all([getSupabase(), getProfile()])
   if (!profile?.company_id) return null
 
+  const today = new Date().toISOString().split('T')[0]
+
   const { data: areas } = await supabase
     .from('work_areas')
-    .select('*, shifts(*), tasks(count)')
+    .select('*, shifts(*)')
     .eq('company_id', profile.company_id)
     .order('order_index', { ascending: true })
 
@@ -22,6 +24,8 @@ export default async function AreasPage() {
       initialAreas={areas ?? []}
       tasks={tasks ?? []}
       companyId={profile.company_id}
+      userId={profile.id}
+      today={today}
     />
   )
 }

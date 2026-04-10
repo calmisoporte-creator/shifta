@@ -210,7 +210,7 @@ export interface Database {
 // Tipos derivados convenientes
 export type Company = Database['public']['Tables']['companies']['Row']
 export type Profile = Database['public']['Tables']['profiles']['Row']
-export type WorkArea = Database['public']['Tables']['work_areas']['Row']
+export type WorkArea = Database['public']['Tables']['work_areas']['Row'] & { widgets?: string[] }
 export type Shift = Database['public']['Tables']['shifts']['Row']
 export type Task = Database['public']['Tables']['tasks']['Row']
 export type TaskCompletion = Database['public']['Tables']['task_completions']['Row']
@@ -220,3 +220,24 @@ export type TaskStatus = 'pending' | 'in_progress' | 'completed'
 export type TaskPriority = 'high' | 'medium' | 'low'
 export type UserRole = 'admin' | 'employee'
 export type AreaAccessType = 'employees' | 'admins_only'
+export type WorkspaceWidget = 'tasks' | 'calendar' | 'notes'
+
+export interface WorkspaceEvent {
+  id: string
+  area_id: string
+  title: string
+  date: string
+  description: string | null
+  color: string
+  created_by: string | null
+  created_at: string
+}
+
+export interface WorkspaceNote {
+  id: string
+  area_id: string
+  content: string
+  updated_by: string | null
+  updated_at: string
+  created_at: string
+}
