@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { getSupabase, getProfile } from '@/lib/supabase/cached'
 import { Badge } from '@/components/ui/badge'
 import { formatDate, formatDateTime, statusLabel, priorityColor, priorityLabel } from '@/lib/utils'
 import { History } from 'lucide-react'
@@ -9,16 +9,7 @@ export default async function HistoryPage({
   searchParams: Promise<{ date?: string; area?: string }>
 }) {
   const { date, area } = await searchParams
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('company_id')
-    .eq('id', user.id)
-    .single()
-
+  const [supabase, profile] = await Promise.all([getSupabase(), getProfile()])
   if (!profile?.company_id) return null
 
   const filterDate = date ?? new Date().toISOString().split('T')[0]

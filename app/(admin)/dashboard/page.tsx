@@ -1,20 +1,11 @@
-import { createClient } from '@/lib/supabase/server'
+import { getSupabase, getProfile } from '@/lib/supabase/cached'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Layers, Users, CheckCircle2, Clock } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 
 export default async function DashboardPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('company_id, name')
-    .eq('id', user.id)
-    .single()
-
+  const [supabase, profile] = await Promise.all([getSupabase(), getProfile()])
   if (!profile?.company_id) return null
 
   const companyId = profile.company_id

@@ -1,17 +1,8 @@
-import { createClient } from '@/lib/supabase/server'
+import { getSupabase, getProfile } from '@/lib/supabase/cached'
 import { EmployeesClient } from './employees-client'
 
 export default async function EmployeesPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('company_id')
-    .eq('id', user.id)
-    .single()
-
+  const [supabase, profile] = await Promise.all([getSupabase(), getProfile()])
   if (!profile?.company_id) return null
 
   const [{ data: employees }, { data: areas }] = await Promise.all([

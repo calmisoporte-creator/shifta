@@ -39,26 +39,21 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
-  if (user && (pathname.startsWith('/dashboard') || pathname.startsWith('/areas') || pathname.startsWith('/employees') || pathname.startsWith('/history') || pathname.startsWith('/settings'))) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
+  // Leer el rol desde la metadata del JWT — sin consulta a DB
+  if (user) {
+    const role = user.user_metadata?.role as string | undefined
 
-    if (profile?.role !== 'admin') {
+    const isAdminRoute = pathname.startsWith('/dashboard') ||
+      pathname.startsWith('/areas') ||
+      pathname.startsWith('/employees') ||
+      pathname.startsWith('/history') ||
+      pathname.startsWith('/settings')
+
+    if (isAdminRoute && role !== 'admin') {
       return NextResponse.redirect(new URL('/tasks', request.url))
     }
-  }
 
-  if (user && pathname.startsWith('/tasks')) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (profile?.role === 'admin') {
+    if (pathname.startsWith('/tasks') && role === 'admin') {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
   }

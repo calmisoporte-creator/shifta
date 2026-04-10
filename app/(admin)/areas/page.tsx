@@ -1,17 +1,8 @@
-import { createClient } from '@/lib/supabase/server'
+import { getSupabase, getProfile } from '@/lib/supabase/cached'
 import { AreasClient } from './areas-client'
 
 export default async function AreasPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('company_id')
-    .eq('id', user.id)
-    .single()
-
+  const [supabase, profile] = await Promise.all([getSupabase(), getProfile()])
   if (!profile?.company_id) return null
 
   const { data: areas } = await supabase
@@ -20,11 +11,11 @@ export default async function AreasPage() {
     .eq('company_id', profile.company_id)
     .order('order_index', { ascending: true })
 
-  const { data: tasks } = await supabase
-    .from('tasks')
-    .select('*')
-    .in('area_id', (areas ?? []).map(a => a.id))
-    .order('order_index', { ascending: true })
+  const areaIds = (areas ?? []).map((a: any) => a.id)
+
+  const { data: tasks } = areaIds.length > 0
+    ? await supabase.from('tasks').select('*').in('area_id', areaIds).order('order_index', { ascending: true })
+    : { data: [] }
 
   return (
     <AreasClient
