@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
 import { TasksClient } from './tasks-client'
-import { formatTime } from '@/lib/utils'
 
 export default async function TasksPage() {
   const supabase = await createClient()
@@ -8,31 +7,19 @@ export default async function TasksPage() {
   if (!user) return null
 
   const today = new Date().toISOString().split('T')[0]
-  const now = new Date().toTimeString().slice(0, 5)
 
   // Obtener área del empleado
   const { data: userArea } = await supabase
     .from('user_areas')
-    .select('area_id, work_areas(name, shifts(*))')
+    .select('area_id, work_areas(name)')
     .eq('user_id', user.id)
     .single()
 
   if (!userArea) return <p className="text-gray-400 text-center mt-20">Sin área asignada</p>
 
   const area = userArea.work_areas as any
-  const shifts: any[] = area?.shifts ?? []
 
-  // Turno activo (el último que haya arrancado antes de ahora)
-  const activeShift = [...shifts]
-    .filter(s => s.start_time <= now)
-    .sort((a, b) => b.start_time.localeCompare(a.start_time))[0] ?? null
-
-  // Siguiente turno
-  const nextShift = [...shifts]
-    .filter(s => s.start_time > now)
-    .sort((a, b) => a.start_time.localeCompare(b.start_time))[0] ?? null
-
-  // Tareas del área (recurrentes de hoy + específicas de hoy)
+  // Tareas del área (recurrentes + específicas de hoy)
   const { data: tasks } = await supabase
     .from('tasks')
     .select('*')
@@ -46,17 +33,25 @@ export default async function TasksPage() {
     .select('*')
     .eq('user_id', user.id)
     .eq('date', today)
-    .eq('shift_id', activeShift?.id ?? '00000000-0000-0000-0000-000000000000')
+
+  // Horarios del empleado para hoy
+  const { data: employeeShifts } = await supabase
+    .from('employee_shifts')
+    .select('*')
+    .eq('user_id', user.id)
+    .eq('area_id', userArea.area_id)
+    .eq('date', today)
+    .order('start_time', { ascending: true })
 
   return (
     <TasksClient
       tasks={tasks ?? []}
       completions={completions ?? []}
       userId={user.id}
+      areaId={userArea.area_id}
       areaName={area?.name ?? 'Mi área'}
-      activeShift={activeShift}
-      nextShift={nextShift}
       today={today}
+      initialEmployeeShifts={(employeeShifts ?? []) as any}
     />
   )
 }

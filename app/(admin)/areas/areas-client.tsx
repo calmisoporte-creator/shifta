@@ -176,7 +176,6 @@ export function AreasClient({ initialAreas, tasks, companyId }: Props) {
             {tab === 'shifts' && (
               <ShiftsManager
                 area={selectedArea}
-                initialShifts={selectedArea.shifts ?? []}
               />
             )}
           </div>

@@ -4,16 +4,17 @@ import { createClient } from '@/lib/supabase/client'
 import { Badge } from '@/components/ui/badge'
 import type { Task, TaskCompletion, TaskStatus } from '@/lib/types'
 import { priorityColor, priorityLabel, formatTime } from '@/lib/utils'
-import { CheckCircle2, Circle, Clock3, Flag, ChevronRight, Loader2 } from 'lucide-react'
+import { CheckCircle2, Circle, Clock3, Flag, ChevronRight, Loader2, CalendarClock, Pencil } from 'lucide-react'
+import { ScheduleModal, type EmployeeShift } from './schedule-modal'
 
 interface Props {
   tasks: Task[]
   completions: TaskCompletion[]
   userId: string
+  areaId: string
   areaName: string
-  activeShift: { id: string; name: string; start_time: string } | null
-  nextShift: { id: string; name: string; start_time: string } | null
   today: string
+  initialEmployeeShifts: EmployeeShift[]
 }
 
 const statusCycle: Record<TaskStatus, TaskStatus> = {
@@ -22,10 +23,22 @@ const statusCycle: Record<TaskStatus, TaskStatus> = {
   completed: 'pending',
 }
 
-export function TasksClient({ tasks, completions: initial, userId, areaName, activeShift, nextShift, today }: Props) {
+export function TasksClient({
+  tasks,
+  completions: initial,
+  userId,
+  areaId,
+  areaName,
+  today,
+  initialEmployeeShifts,
+}: Props) {
   const supabase = createClient()
   const [completions, setCompletions] = useState<TaskCompletion[]>(initial)
   const [updating, setUpdating] = useState<Set<string>>(new Set())
+  const [employeeShifts, setEmployeeShifts] = useState<EmployeeShift[]>(initialEmployeeShifts)
+
+  // Mostrar modal automáticamente si no cargó horario hoy
+  const [scheduleModal, setScheduleModal] = useState(initialEmployeeShifts.length === 0)
 
   function getCompletion(taskId: string): TaskCompletion | undefined {
     return completions.find(c => c.task_id === taskId)
@@ -61,7 +74,7 @@ export function TasksClient({ tasks, completions: initial, userId, areaName, act
         .insert({
           task_id: task.id,
           user_id: userId,
-          shift_id: activeShift?.id ?? null,
+          shift_id: null,
           status: next,
           completed_at: next === 'completed' ? now : null,
           date: today,
@@ -78,33 +91,46 @@ export function TasksClient({ tasks, completions: initial, userId, areaName, act
   const inProgressCount = tasks.filter(t => getStatus(t.id) === 'in_progress').length
   const completedCount = tasks.filter(t => getStatus(t.id) === 'completed').length
 
+  // Formato de horarios del día: "14:00–15:00, 17:00–19:00"
+  const shiftsLabel = employeeShifts.length > 0
+    ? employeeShifts
+        .sort((a, b) => a.start_time.localeCompare(b.start_time))
+        .map(s => `${s.start_time.slice(0, 5)}–${s.end_time.slice(0, 5)}`)
+        .join(', ')
+    : null
+
   return (
     <div>
-      {/* Header área */}
+      {/* Header */}
       <div className="mb-6">
         <h1 className="text-xl font-bold text-gray-100">{areaName}</h1>
-        {activeShift ? (
-          <div className="flex items-center gap-2 mt-2">
-            <div className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-            <p className="text-sm text-gray-300">
-              Turno activo: <span className="font-medium text-green-400">{activeShift.name}</span>
-              {' '}— desde las {formatTime(activeShift.start_time)}
-            </p>
-          </div>
-        ) : (
-          <p className="text-sm text-gray-500 mt-1">Sin turno activo</p>
-        )}
-        {nextShift && (
-          <p className="text-xs text-gray-500 mt-1">
-            Próximo: {nextShift.name} a las {formatTime(nextShift.start_time)}
-          </p>
-        )}
+
+        {/* Horario del día */}
+        <div className="flex items-center justify-between mt-2">
+          {shiftsLabel ? (
+            <div className="flex items-center gap-2">
+              <div className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+              <p className="text-sm text-gray-300">
+                Horario hoy: <span className="font-medium text-green-400">{shiftsLabel}</span>
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">Sin horario cargado para hoy</p>
+          )}
+          <button
+            onClick={() => setScheduleModal(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-300 hover:text-gray-100 hover:bg-gray-700 transition-colors"
+          >
+            <Pencil size={11} />
+            {shiftsLabel ? 'Editar horario' : 'Cargar horario'}
+          </button>
+        </div>
       </div>
 
       {/* Progress bar */}
       <div className="mb-6 rounded-xl border border-gray-800 bg-gray-900 p-4">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-medium text-gray-300">Progreso del turno</p>
+          <p className="text-sm font-medium text-gray-300">Progreso del día</p>
           <p className="text-sm font-bold text-gray-100">
             {completedCount}/{tasks.length}
           </p>
@@ -144,7 +170,6 @@ export function TasksClient({ tasks, completions: initial, userId, areaName, act
                   : 'border-gray-800 bg-gray-900 hover:border-gray-700'
               }`}
             >
-              {/* Icono de estado */}
               <div className="mt-0.5 flex-shrink-0">
                 {isUpdating ? (
                   <Loader2 size={20} className="animate-spin text-gray-400" />
@@ -157,7 +182,6 @@ export function TasksClient({ tasks, completions: initial, userId, areaName, act
                 )}
               </div>
 
-              {/* Contenido */}
               <div className="flex-1 min-w-0">
                 <p className={`text-sm font-medium ${
                   status === 'completed' ? 'line-through text-gray-500' : 'text-gray-100'
@@ -172,12 +196,8 @@ export function TasksClient({ tasks, completions: initial, userId, areaName, act
                     <Flag size={9} />
                     {priorityLabel[task.priority]}
                   </span>
-                  {status === 'in_progress' && (
-                    <Badge variant="warning">En progreso</Badge>
-                  )}
-                  {status === 'completed' && (
-                    <Badge variant="success">Completada</Badge>
-                  )}
+                  {status === 'in_progress' && <Badge variant="warning">En progreso</Badge>}
+                  {status === 'completed' && <Badge variant="success">Completada</Badge>}
                 </div>
               </div>
 
@@ -187,12 +207,21 @@ export function TasksClient({ tasks, completions: initial, userId, areaName, act
         })}
       </div>
 
-      {/* Hint */}
       {tasks.length > 0 && (
         <p className="text-center text-xs text-gray-600 mt-6">
           Tocá una tarea para cambiar su estado
         </p>
       )}
+
+      <ScheduleModal
+        open={scheduleModal}
+        onClose={() => setScheduleModal(false)}
+        userId={userId}
+        areaId={areaId}
+        today={today}
+        existingShifts={employeeShifts}
+        onSaved={shifts => setEmployeeShifts(shifts)}
+      />
     </div>
   )
 }
