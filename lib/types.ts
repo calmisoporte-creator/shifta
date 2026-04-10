@@ -15,6 +15,7 @@ export interface Database {
           name: string
           logo_url: string | null
           invite_token: string
+          admin_invite_token: string | null
           owner_id: string | null
           created_at: string
         }
@@ -23,6 +24,7 @@ export interface Database {
           name: string
           logo_url?: string | null
           invite_token?: string
+          admin_invite_token?: string | null
           owner_id?: string | null
           created_at?: string
         }
@@ -31,6 +33,7 @@ export interface Database {
           name?: string
           logo_url?: string | null
           invite_token?: string
+          admin_invite_token?: string | null
           owner_id?: string | null
           created_at?: string
         }
