@@ -22,7 +22,9 @@ export function SettingsClient({ company: initial, adminName, baseUrl }: Props) 
   const [copied, setCopied] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
 
-  const inviteUrl = `${baseUrl}/invite/${company.invite_token}`
+  // Usar window.location.origin como fallback si NEXT_PUBLIC_APP_URL no está configurado
+  const origin = baseUrl || (typeof window !== 'undefined' ? window.location.origin : '')
+  const inviteUrl = `${origin}/invite/${company.invite_token}`
 
   async function saveName() {
     if (!name.trim() || name === company.name) return
