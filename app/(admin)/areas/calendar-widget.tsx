@@ -117,8 +117,12 @@ export function CalendarWidget({ areaId, userId }: Props) {
 
     setSaving(false)
 
+    if (error) {
+      setFormError(`Error: ${error.message}`)
+      return
+    }
+
     if (data) {
-      // Agrega el evento a la lista y colapsa el formulario
       setEvents(prev => [...prev, data as WorkspaceEvent].sort((a, b) => a.date.localeCompare(b.date)))
       setForm(EMPTY_FORM)
       setShowForm(false)
