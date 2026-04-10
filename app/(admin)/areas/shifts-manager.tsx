@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,45 +15,55 @@ interface Props {
 }
 
 export function ShiftsManager({ area, shifts, onShiftsChange }: Props) {
-  const supabase = createClient()
+  const supabaseRef = useRef(createClient())
+  const supabase = supabaseRef.current
+
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState<Shift | null>(null)
   const [form, setForm] = useState({ name: '', start_time: '' })
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
   const [deleteModal, setDeleteModal] = useState(false)
   const [deleting, setDeleting] = useState<Shift | null>(null)
 
   function openCreate() {
     setEditing(null)
     setForm({ name: '', start_time: '' })
+    setError('')
     setModal(true)
   }
 
   function openEdit(shift: Shift) {
     setEditing(shift)
     setForm({ name: shift.name, start_time: shift.start_time })
+    setError('')
     setModal(true)
   }
 
   async function save() {
     if (!form.name.trim() || !form.start_time) return
     setSaving(true)
+    setError('')
 
     if (editing) {
-      const { data } = await supabase
+      const { data, error: err } = await supabase
         .from('shifts')
         .update({ name: form.name.trim(), start_time: form.start_time })
         .eq('id', editing.id)
         .select()
         .single()
-      if (data) onShiftsChange(shifts.map(s => s.id === data.id ? data : s))
+
+      if (err) { setError(err.message); setSaving(false); return }
+      if (data) onShiftsChange(shifts.map(s => s.id === (data as any).id ? data as any : s))
     } else {
-      const { data } = await supabase
+      const { data, error: err } = await supabase
         .from('shifts')
         .insert({ name: form.name.trim(), start_time: form.start_time, area_id: area.id })
         .select()
         .single()
-      if (data) onShiftsChange([...shifts, data])
+
+      if (err) { setError(err.message); setSaving(false); return }
+      if (data) onShiftsChange([...shifts, data as any])
     }
 
     setSaving(false)
@@ -63,7 +73,8 @@ export function ShiftsManager({ area, shifts, onShiftsChange }: Props) {
   async function deleteShift() {
     if (!deleting) return
     setSaving(true)
-    await supabase.from('shifts').delete().eq('id', deleting.id)
+    const { error: err } = await supabase.from('shifts').delete().eq('id', deleting.id)
+    if (err) { setError(err.message); setSaving(false); return }
     onShiftsChange(shifts.filter(s => s.id !== deleting.id))
     setSaving(false)
     setDeleteModal(false)
@@ -134,6 +145,9 @@ export function ShiftsManager({ area, shifts, onShiftsChange }: Props) {
             value={form.start_time}
             onChange={e => setForm(p => ({ ...p, start_time: e.target.value }))}
           />
+          {error && (
+            <p className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-400">{error}</p>
+          )}
           <div className="flex gap-3 pt-2">
             <Button variant="secondary" className="flex-1" onClick={() => setModal(false)}>Cancelar</Button>
             <Button className="flex-1" loading={saving} onClick={save}>
@@ -147,6 +161,9 @@ export function ShiftsManager({ area, shifts, onShiftsChange }: Props) {
         <p className="text-sm text-gray-300 mb-5">
           ¿Eliminar el turno <strong>{deleting?.name}</strong>?
         </p>
+        {error && (
+          <p className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-400 mb-3">{error}</p>
+        )}
         <div className="flex gap-3">
           <Button variant="secondary" className="flex-1" onClick={() => setDeleteModal(false)}>Cancelar</Button>
           <Button variant="danger" className="flex-1" loading={saving} onClick={deleteShift}>Eliminar</Button>
