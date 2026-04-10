@@ -176,10 +176,7 @@ export function AreasClient({ initialAreas, tasks, companyId }: Props) {
             {tab === 'shifts' && (
               <ShiftsManager
                 area={selectedArea}
-                shifts={selectedArea.shifts ?? []}
-                onShiftsChange={updated =>
-                  setAreas(prev => prev.map(a => a.id === selectedArea.id ? { ...a, shifts: updated } : a))
-                }
+                initialShifts={selectedArea.shifts ?? []}
               />
             )}
           </div>
